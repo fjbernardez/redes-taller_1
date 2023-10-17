@@ -3,6 +3,7 @@ import sys
 from scapy.all import *
 from time import *
 import matplotlib.pyplot as plt
+import math
 #Esto es solo para obtener la ip del host
 import socket
 hostname = socket.gethostname()
@@ -74,56 +75,53 @@ modifiedThompson=[1.1511,1.4250,1.5712,1.6563,1.7110,1.7491,1.7770,1.7984,1.8153
 outliersThompson = []
 quedanOutliers = True
 rtt_sin_outliers = rtt_salto[:]
-promedio_completo = None
-varianza_completo = None
+desviacionesSobreVarianza = {}
 #Obtenemos outliers con el metodo de thompson
 while quedanOutliers:
     #Promedio de tiempos
     total_tiempos = 0
     for salto in rtt_sin_outliers:
         total_tiempos+=salto[2]
-    promedio_tiempos = total_tiempos/len(rtt_sin_outliers)
-
-    #La primera iteracion vamos a guardar el promedio que nos da con todos los saltos
-    if promedio_completo == None:
-        promedio_completo = promedio_tiempos
+    promedio_tiempos = total_tiempos/len(rtt_sin_outliers)   
 
     #Desviacion y varianza de salto
     rtt_salto_desviacion = []
-    varianza_tiempos =0
+    desviacionStandard =0
     salto_mayor_desviacion = None
     maxima_desviacion = None
     for salto in rtt_sin_outliers:
-        desviacion = abs(salto[2] - promedio_tiempos)
+        desviacion = abs(salto[2] - promedio_tiempos)        
         if salto_mayor_desviacion == None:
             salto_mayor_desviacion = salto
             maxima_desviacion = desviacion
         elif maxima_desviacion < desviacion:
             salto_mayor_desviacion = salto
             maxima_desviacion = desviacion
-        varianza_tiempos += desviacion/(len(rtt_sin_outliers)-1)
+        desviacionStandard += (desviacion**2)/(len(rtt_sin_outliers)-1)
         rtt_salto_deviacion = salto + (desviacion,)
-    #La primera iteracion vamos a guardar la varianza que nos da con todos los saltos
-    if varianza_completo == None:
-        varianza_completo = varianza_tiempos
+    desviacionStandard = math.sqrt(desviacionStandard)
+    #Actualizamos las desviaciones sobre varianza de cada salto para graficar luego
+    for salto in rtt_sin_outliers:
+        desviacionesSobreVarianza[salto] = (abs(salto[2] - promedio_tiempos)/desviacionStandard)    
 
     #Vemos si es outlier el salto con mayor desviacion
-    limite = varianza_tiempos * modifiedThompson[len(rtt_sin_outliers)-3]
+    limite = desviacionStandard * modifiedThompson[len(rtt_sin_outliers)-3]
 
     quedanOutliers = maxima_desviacion > limite
     if quedanOutliers:
         outliersThompson.append(salto_mayor_desviacion)
         rtt_sin_outliers.remove(salto_mayor_desviacion)
+
 print("Outliers")
 print(outliersThompson)
 
-desviacionesSobreVarianza = []
+desviacionesSobreVarianzaLista = []
 esOutlierThompson = []
 for salto in rtt_salto:
     esOutlierThompson.append(salto in outliersThompson)  
-    desviacionesSobreVarianza.append(abs(salto[2]-promedio_completo)/varianza_completo) 
+    desviacionesSobreVarianzaLista.append(desviacionesSobreVarianza[salto]) 
 
-#Graficamos el tiempo da cada salto, rojo es outlier de thompson 
+#Graficamos el tiempo da cada salto, rojo es outlier de Thompson 
 colores = ['red' if cond else 'blue' for cond in esOutlierThompson]
 ip_llegada_saltos = [salto[1] for salto in rtt_salto]
 tiempo_saltos = [salto[2] for salto in rtt_salto]
@@ -131,16 +129,15 @@ tiempo_saltos = [salto[2] for salto in rtt_salto]
 plt.scatter(ip_llegada_saltos,tiempo_saltos,c = colores)
 plt.axhline(y=sum(tiempo_saltos)/len(tiempo_saltos), color='cyan', linestyle='--', label='Promedio del tiempo de todos los saltos')
 plt.xticks(rotation=340) 
-plt.xlabel('IP de cada salto')
+plt.xlabel('IP destino de cada salto')
 plt.ylabel('RTT del salto (ms)')
 plt.legend()
 plt.show()    
 
-#Grafico del valor (x - promedio)/S de cada salto
-plt.scatter(ip_llegada_saltos,desviacionesSobreVarianza,c = colores)
-plt.axhline(y=sum(desviacionesSobreVarianza)/len(desviacionesSobreVarianza), color='cyan', linestyle='--', label='Promedio del valor (xi - X)/S')
+#Grafico del valor (x - promedio)/S de cada salto, mantenemos rojo si fue outliers de Thompson
+plt.scatter(ip_llegada_saltos,desviacionesSobreVarianzaLista,c = colores)
 plt.xticks(rotation=340) 
-plt.xlabel('IP de cada salto')
+plt.xlabel('IP destino de cada salto')
 plt.ylabel('Valor (xi - X)/S')
 plt.legend()
 plt.show()   
